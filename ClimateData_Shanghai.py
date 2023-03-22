@@ -5,17 +5,17 @@ import json
 import datetime
 import psycopg2
 
-base_url = "https://www.timeanddate.com/weather/china/shanghai/historic?month="
-startYear = 2022
-endYear = 2022
-start_month = 2
-end_month = 2
+base_url = "https://www.timeanddate.com/weather/china/shanghai/historic?month={}&year={}"
+startYear = 2023
+endYear = 2023
+start_month = 1
+end_month = 3
 Variable = "Temp"
 
 Temperature = []
 for year in range(startYear, endYear + 1):
     for month in range(start_month, end_month + 1):
-        url = base_url + str(month) + "&year=" + str(year)
+        url = base_url.format(str(month), str(year))
 
         r = requests.get(url)
         c = r.content
@@ -62,6 +62,9 @@ df.drop(columns=["date"], inplace=True)
 # Delete "half-hour" data point:
 df.drop(df[df['Minute'] == "30"].index, inplace=True)
 
+# Check output:
+# print(df)
+
 
 def insert_data_into_database(years, months, days, hours, time_stamps, temperature, table_name="WeatherData"):
     # First, build a connection
@@ -82,12 +85,12 @@ def insert_data_into_database(years, months, days, hours, time_stamps, temperatu
         months_f.extend([months[i]])
         days_f.extend([days[i]])
         hours_f.extend([hours[i]])
-        time_stamps_f.extend([minutes[i]])
+        time_stamps_f.extend([time_stamps[i]])
         temperature_f.extend([temperature[i]])
 
     # Command line to write data into table
     table_name = '"' + table_name + '"'
-    sql = "INSERT INTO{}(\"Year\", \"Month\", \"Day\", \"Hour\", \"Date_Time\", \"Temperature\") VALUES(%s, %s, %s, " \
+    sql = "INSERT INTO{}(\"Year\", \"Month\", \"Day\", \"Hour\", \"Timestamp\", \"Temperature\") VALUES(%s, %s, %s, " \
           "%s, %s, %s)".format(table_name)
 
     # Group datasets into a list
@@ -105,7 +108,7 @@ def insert_data_into_database(years, months, days, hours, time_stamps, temperatu
     connect.close()
 
 
-def insert_single_data_into_database(data, table_name="WeatherData"):
+def update_data_in_database(keys, data, table_name="WeatherData"):
     # First, build a connection
     connect = psycopg2.connect(
         database="ClimateData",
@@ -119,25 +122,22 @@ def insert_single_data_into_database(data, table_name="WeatherData"):
 
     # Command line to write data into table
     table_name = '"' + table_name + '"'
-    sql = "INSERT INTO{}(\"Date_Time\") VALUES(%s)".format(table_name)
+    for i in range(len(keys)):
+        sql = "UPDATE {} SET \"Humidity\"={} WHERE \"Timestamp\"={};".format(table_name, str(data[i]), str(keys[i]))
 
-    # Group datasets into a list
-    my_list = zip(data)
-    data_list = [list(d) for d in my_list]
-
-    # Execute
-    try:
-        cursor.executemany(sql, data_list)
-    except Exception as e:
-        print(e)
+        # Execute
+        try:
+            cursor.execute(sql)
+        except Exception as e:
+            print(e)
 
     connect.commit()
     cursor.close()
     connect.close()
 
 
-# insert_data_into_database(
-#     df['Year'].to_list(), df['Month'].to_list(), df['Day'].to_list(),
-#     df['Hour'].to_list(), df['Timestamp'].to_list(), df['temp'].to_list())
+insert_data_into_database(
+    df['Year'].to_list(), df['Month'].to_list(), df['Day'].to_list(),
+    df['Hour'].to_list(), df['Timestamp'].to_list(), df['temp'].to_list())
 
-insert_single_data_into_database(df['Timestamp'].to_list())
+# update_data_in_database(df['Timestamp'].to_list(), df['temp'].to_list())
